@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>체스 게임</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 2px solid #333;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            cursor: pointer;
+        }
+        .white {
+            background-color: #fff;
+        }
+        .black {
+            background-color: #888;
+        }
+        .highlight {
+            background-color: yellow;
+        }
+        .check {
+            border: 2px solid red;
+        }
+    </style>
+</head>
+<body>
+    <div id="board"></div>
+    <script>
+        const board = document.getElementById('board');
+        const initialBoard = [
+            ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖'],
+            ['♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟'],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙'],
+            ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖']
+        ];
+
+        let selectedCell = null;
+        let currentPlayer = 'white';  // 현재 플레이어 (white 또는 black)
+        let whiteKingPosition = [7, 4];
+        let blackKingPosition = [0, 4];
+
+        function createBoard() {
+            initialBoard.forEach((row, rowIndex) => {
+                row.forEach((cell, colIndex) => {
+                    const cellDiv = document.createElement('div');
+                    cellDiv.classList.add('cell', (rowIndex + colIndex) % 2 === 0 ? 'white' : 'black');
+                    cellDiv.dataset.row = rowIndex;
+                    cellDiv.dataset.col = colIndex;
+                    cellDiv.innerHTML = cell;
+                    cellDiv.addEventListener('click', handleCellClick);
+                    board.appendChild(cellDiv);
+                });
+            });
+        }
+
+        function handleCellClick(event) {
+            const row = event.target.dataset.row;
+            const col = event.target.dataset.col;
+
+            if (selectedCell) {
+                const fromRow = selectedCell.dataset.row;
+                const fromCol = selectedCell.dataset.col;
+                if (movePiece(fromRow, fromCol, row, col)) {
+                    selectedCell.classList.remove('highlight');
+                    selectedCell = null;
+                    if (!checkForCheckmate(currentPlayer)) {
+                        currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
+                        checkForCheck();
+                    }
+                }
+            } else {
+                if (initialBoard[row][col] && isCurrentPlayerPiece(initialBoard[row][col])) {
+                    selectedCell = event.target;
+                    highlightMoves(row, col);
+                }
+            }
+        }
+
+        function isCurrentPlayerPiece(piece) {
+            return (currentPlayer === 'white' && piece === piece.toUpperCase()) ||
+                   (currentPlayer === 'black' && piece === piece.toLowerCase());
+        }
+
+        function highlightMoves(row, col) {
+            const piece = initialBoard[row][col];
+            const moves = getPossibleMoves(row, col, piece);
+            moves.forEach(([r, c]) => {
+                const cell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                if (cell) cell.classList.add('highlight');
+            });
+        }
+
+        function getPossibleMoves(row, col, piece) {
+            const moves = [];
+            const rowIndex = parseInt(row);
+            const colIndex = parseInt(col);
+
+            switch (piece) {
+                case '♙': // 백색 폰
+                    if (rowIndex > 0 && !initialBoard[rowIndex - 1][colIndex]) moves.push([rowIndex - 1, colIndex]);
+                    if (rowIndex === 6 && !initialBoard[rowIndex - 1][colIndex] && !initialBoard[rowIndex - 2][colIndex]) moves.push([rowIndex - 2, colIndex]);
+                    if (rowIndex > 0 && colIndex > 0 && initialBoard[rowIndex - 1][colIndex - 1] === '♟') moves.push([rowIndex - 1, colIndex - 1]);
+                    if (rowIndex > 0 && colIndex < 7 && initialBoard[rowIndex - 1][colIndex + 1] === '♟') moves.push([rowIndex - 1, colIndex + 1]);
+                    break;
+                case '♟': // 흑색 폰
+                    if (rowIndex < 7 && !initialBoard[rowIndex + 1][colIndex]) moves.push([rowIndex + 1, colIndex]);
+                    if (rowIndex === 1 && !initialBoard[rowIndex + 1][colIndex] && !initialBoard[rowIndex + 2][colIndex]) moves.push([rowIndex + 2, colIndex]);
+                    if (rowIndex < 7 && colIndex > 0 && initialBoard[rowIndex + 1][colIndex - 1] === '♙') moves.push([rowIndex + 1, colIndex - 1]);
+                    if (rowIndex < 7 && colIndex < 7 && initialBoard[rowIndex + 1][colIndex + 1] === '♙') moves.push([rowIndex + 1, colIndex + 1]);
+                    break;
+                case '♖': // 룩
+                    addLinearMoves(rowIndex, colIndex, moves);
+                    break;
+                case '♗': // 비숍
+                    addDiagonalMoves(rowIndex, colIndex, moves);
+                    break;
+                case '♘': // 나이트
+                    addKnightMoves(rowIndex, colIndex, moves);
+                    break;
+                case '♕': // 퀸
+                    addLinearMoves(rowIndex, colIndex, moves);
+                    addDiagonalMoves(rowIndex, colIndex, moves);
+                    break;
+                case '♔': // 킹
+                    addKingMoves(rowIndex, colIndex, moves);
+                    break;
+            }
+            return moves;
+        }
+
+        function addLinearMoves(row, col, moves) {
+            for (let i = 1; i < 8; i++) {
+                if (addMoveIfValid(row + i, col, moves) || addMoveIfValid(row - i, col, moves)) break; // Up & Down
+                if (addMoveIfValid(row, col + i, moves) || addMoveIfValid(row, col - i, moves)) break; // Right & Left
+            }
+        }
+
+        function addDiagonalMoves(row, col, moves) {
+            for (let i = 1; i < 8; i++) {
+                if (addMoveIfValid(row + i, col + i, moves) || addMoveIfValid(row - i, col - i, moves)) break; // Diagonal /
+                if (addMoveIfValid(row + i, col - i, moves) || addMoveIfValid(row - i, col + i, moves)) break; // Diagonal \
+            }
+        }
+
+        function addKnightMoves(row, col, moves) {
+            const knightMoves = [
+                [2, 1], [2, -1], [-2, 1], [-2, -1],
+                [1, 2], [1, -2], [-1, 2], [-1, -2]
+            ];
+            knightMoves.forEach(([r, c]) => {
+                addMoveIfValid(row + r, col + c, moves);
+            });
+        }
+
+        function addKingMoves(row, col, moves) {
+            const kingMoves = [
+                [1, 0], [-1, 0], [0, 1], [0, -1],
+                [1, 1], [1, -1], [-1, 1], [-1, -1]
+            ];
+            kingMoves.forEach(([r, c]) => {
+                addMoveIfValid(row + r, col + c, moves);
+            });
+        }
+
+        function addMoveIfValid(row, col, moves) {
+            if (row >= 0 && row < 8 && col >= 0 && col < 8) {
+                if (!initialBoard[row][col] || !isCurrentPlayerPiece(initialBoard[row][col])) {
+                    moves.push([row, col]);
+                    if (initialBoard[row][col]) return true; // Capture
+                }
+            }
+            return false; // Invalid or occupied by own piece
+        }
+
+        function movePiece(fromRow, fromCol, toRow, toCol) {
+            const piece = initialBoard[fromRow][fromCol];
+            initialBoard[fromRow][fromCol] = '';
+            initialBoard[toRow][toCol] = piece;
+
+            // Update king position if necessary
+            if (piece === '♔') whiteKingPosition = [toRow, toCol];
+            if (piece === '♚') blackKingPosition = [toRow, toCol];
+
+            updateBoard();
+            return true;
+        }
+
+        function updateBoard() {
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(cell => {
+                const row = cell.dataset.row;
+                const col = cell.dataset.col;
+                cell.innerHTML = initialBoard[row][col];
+                cell.classList.remove('check');
+            });
+        }
+
+        function checkForCheck() {
+            if (isInCheck('white')) {
+                alert("백이 체크되었습니다!");
+                highlightKing(whiteKingPosition);
+            } else if (isInCheck('black')) {
+                alert("흑이 체크되었습니다!");
+                highlightKing(blackKingPosition);
+            }
+        }
+
+        function isInCheck(player) {
+            const kingPosition = player === 'white' ? whiteKingPosition : blackKingPosition;
+            return initialBoard.some((row, rowIndex) => {
+                return row.some((piece, colIndex) => {
+                    if (!isCurrentPlayerPiece(piece)) {
+                        const moves = getPossibleMoves(rowIndex, colIndex, piece);
+                        return moves.some(move => move[0] === kingPosition[0] && move[1] === kingPosition[1]);
+                    }
+                    return false;
+                });
+            });
+        }
+
+        function highlightKing(position) {
+            const cell = document.querySelector(`.cell[data-row='${position[0]}'][data-col='${position[1]}']`);
+            if (cell) cell.classList.add('check');
+        }
+
+        function checkForCheckmate(player) {
+            const kingPosition = player === 'white' ? whiteKingPosition : blackKingPosition;
+            const kingMoves = getPossibleMoves(kingPosition[0], kingPosition[1], initialBoard[kingPosition[0]][kingPosition[1]]);
+            const isCheckmate = isInCheck(player) && kingMoves.length === 0;
+
+            if (isCheckmate) {
+                alert(`${player === 'white' ? '백' : '흑'}이 체크메이트되었습니다!`);
+            }
+            return isCheckmate;
+        }
+
+        createBoard();
+    </script>
+</body>
+</html>
